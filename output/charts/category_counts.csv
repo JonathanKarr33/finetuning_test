@@ -1,0 +1,13 @@
+Field,Soft_Label_0.5_Count,Soft_Label_1_Count,Soft_Label_0_Count,Llama_Positive_Count,Llama_Negative_Count,Qwen_Positive_Count,Qwen_Negative_Count,Mitigated_Llama_Positive_Count,Mitigated_Llama_Negative_Count,Mitigated_Qwen_Positive_Count,Mitigated_Qwen_Negative_Count
+Direct,126,361,13,172,328,207,293,273,227,289,211
+Reporting,153,67,280,297,203,88,412,188,312,81,419
+money aid allocation,153,39,308,2,498,220,280,2,498,264,236
+government critique,79,28,393,103,397,222,278,62,438,248,252
+societal critique,157,37,306,154,346,194,306,100,400,226,274
+solutions/interventions,151,152,197,2,498,345,155,30,470,387,113
+personal interaction,66,37,397,5,495,158,342,23,477,199,301
+media portrayal,17,1,482,24,476,151,349,46,454,165,335
+not in my backyard,81,21,398,145,355,210,290,35,465,204,296
+harmful generalization,134,36,330,104,396,213,287,16,484,189,311
+deserving/undeserving,39,1,460,40,460,155,345,4,496,162,338
+Racist,39,1,460,0,500,0,500,0,0,0,0
