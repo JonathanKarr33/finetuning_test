@@ -304,6 +304,7 @@ def plot_soft_label_comparison(soft_results, pdf_path):
     ax2.set_title('Agreement Between Annotators', fontsize=16, fontweight='bold')
     ax2.set_ylabel('Proportion', fontsize=14)
     ax2.tick_params(axis='both', which='major', labelsize=12)
+    plt.xticks(rotation=45, ha='right')  # Added ha='right' for better alignment
     plt.tight_layout()
     
     # Save soft label distribution chart to PDF
