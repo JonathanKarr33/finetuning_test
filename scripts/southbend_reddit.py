@@ -4,9 +4,9 @@ import os
 from datetime import datetime, timezone, timedelta
 import time
 import praw
-CLIENT_ID = 'vvg28cx6MfPXy-xNyt0R0w'
-CLIENT_SECRET = '765sTgXUJXLPcm-PugpWyi6VfPmP5w'
-USER_AGENT = 'test_reddit by /u/Business_Computer796'
+CLIENT_ID = 'YOUR_CLIENT_ID'
+CLIENT_SECRET = 'YOUR_CLIENT_SECRET'
+USER_AGENT = 'YOUR_USER_AGENT'
 
 subreddit_name = "Scranton"
 
