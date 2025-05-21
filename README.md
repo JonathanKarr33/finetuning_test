@@ -33,8 +33,9 @@ To generate this yourself:
 python scripts/deidentify_comments.py
 ```
 
-## 3. Model Setup
+## Model Setup
 
+### 3. Download Required Models
 Download the following models from HuggingFace:
 - [Llama 3.2 3B Instruct](https://huggingface.co/meta-llama/Llama-3.2-3B-Instruct)
 - [Qwen 2.5 7B Instruct](https://huggingface.co/Qwen/Qwen2.5-7B-Instruct)
@@ -75,7 +76,9 @@ python scripts/llama_3_2_mitigate.py
 python scripts/qwen_3_2_mitigate.py
 ```
 
-## 7: Analysis - Statistics and Visualization
+## Analysis
+
+### 7. Statistics and Visualization
 All statistics and charts are available in the [`output/charts/`](output/charts/) directory.
 
 To generate these yourself:
