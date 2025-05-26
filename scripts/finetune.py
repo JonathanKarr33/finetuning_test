@@ -540,7 +540,10 @@ def main():
         metric_for_best_model="mean_f1",
         greater_is_better=True,
         fp16=True,
-        report_to="tensorboard"
+        fp16_opt_level="O1",  # Use mixed precision training with dynamic loss scaling
+        gradient_checkpointing=True,  # Enable gradient checkpointing to save memory
+        optim="adamw_torch_fused",  # Use fused AdamW optimizer
+        report_to="none"  # Disable tensorboard logging
     )
     
     # Initialize trainer
