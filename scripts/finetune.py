@@ -24,19 +24,23 @@ from utils import (
 
 def load_and_preprocess_data():
     """Load and preprocess the raw scores and soft labels."""
-    # Load raw scores
-    raw_scores = pd.read_csv("annotation/raw_scores.csv")
+    # Load raw scores, skipping the first row
+    raw_scores = pd.read_csv("annotation/raw_scores.csv", skiprows=1)
     
     # Load soft labels
     soft_labels = pd.read_csv("output/annotation/soft_labels.csv")
     
-    # Combine the data
-    combined_data = pd.merge(
-        raw_scores,
-        soft_labels,
-        on="comment_id",
-        suffixes=("_raw", "_soft")
-    )
+    # Combine the data - raw_scores has the comments and city, soft_labels has the normalized scores
+    combined_data = pd.concat([
+        raw_scores[['City', 'Deidentified_Comment']],
+        soft_labels
+    ], axis=1)
+    
+    # Rename columns for consistency
+    combined_data = combined_data.rename(columns={
+        'Deidentified_Comment': 'comment',
+        'City': 'city'
+    })
     
     return combined_data
 
