@@ -88,9 +88,34 @@ def prepare_training_data(data, model_type):
         # Format according to model type
         formatted_prompt = format_prompt_for_model(prompt, expected_output_str, model_type)
         
+        # Create labels dictionary for evaluation
+        labels = {
+            "comment_type": {
+                "direct": 1 if row['comment_type'] == 'direct' else 0,
+                "reporting": 1 if row['comment_type'] == 'reporting' else 0
+            },
+            "critique_categories": {
+                "money aid allocation": row['money aid allocation'],
+                "government critique": row['government critique'],
+                "societal critique": row['societal critique']
+            },
+            "response_categories": {
+                "solutions/interventions": row['solutions/interventions'],
+                "personal interaction": row['personal interaction'],
+                "media portrayal": row['media portrayal']
+            },
+            "perception_types": {
+                "not in my backyard": row['not in my backyard'],
+                "harmful generalization": row['harmful generalization'],
+                "deserving/undeserving": row['deserving/undeserving']
+            },
+            "racist": row['Racist']
+        }
+        
         training_data.append({
             "prompt": formatted_prompt,
-            "expected_output": expected_output_str
+            "expected_output": expected_output_str,
+            "labels": labels
         })
     
     return training_data
