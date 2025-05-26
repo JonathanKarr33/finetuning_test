@@ -28,7 +28,7 @@ def load_and_preprocess_data():
     raw_scores = pd.read_csv("annotation/raw_scores.csv")
     
     # Load soft labels
-    soft_labels = pd.read_csv("Output/annotation/soft_labels.csv")
+    soft_labels = pd.read_csv("output/annotation/soft_labels.csv")
     
     # Combine the data
     combined_data = pd.merge(
