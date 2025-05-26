@@ -42,6 +42,27 @@ def load_and_preprocess_data():
         'City': 'city'
     })
     
+    # Add comment_type based on Direct/Reporting scores
+    combined_data['comment_type'] = combined_data.apply(
+        lambda row: 'direct' if row['Direct'] > row['Reporting'] else 'reporting',
+        axis=1
+    )
+    
+    # Add critique_category based on highest scoring critique
+    critique_cols = ['money aid allocation', 'government critique', 'societal critique']
+    combined_data['critique_category'] = combined_data[critique_cols].idxmax(axis=1)
+    
+    # Add response_category based on highest scoring response
+    response_cols = ['solutions/interventions', 'personal interaction', 'media portrayal']
+    combined_data['response_category'] = combined_data[response_cols].idxmax(axis=1)
+    
+    # Add perception_type based on highest scoring perception
+    perception_cols = ['not in my backyard', 'harmful generalization', 'deserving/undeserving']
+    combined_data['perception_type'] = combined_data[perception_cols].idxmax(axis=1)
+    
+    # Add racist flag
+    combined_data['racist'] = combined_data['Racist']
+    
     return combined_data
 
 def prepare_training_data(data, model_type):
