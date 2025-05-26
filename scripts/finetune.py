@@ -513,6 +513,14 @@ def main():
     # Set up training arguments
     print_status("Setting up training configuration...")
     output_dir = f"finetuned_{model_type}"
+    
+    # Set generation config on the model
+    model.generation_config = GenerationConfig(
+        max_length=512,
+        num_beams=4,
+        early_stopping=True
+    )
+    
     training_args = TrainingArguments(
         output_dir=output_dir,
         num_train_epochs=3,
@@ -532,12 +540,7 @@ def main():
         metric_for_best_model="mean_f1",
         greater_is_better=True,
         fp16=True,
-        report_to="tensorboard",
-        generation_config=GenerationConfig(
-            max_length=512,
-            num_beams=4,
-            early_stopping=True
-        )
+        report_to="tensorboard"
     )
     
     # Initialize trainer
