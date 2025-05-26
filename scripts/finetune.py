@@ -539,11 +539,11 @@ def main():
         load_best_model_at_end=True,
         metric_for_best_model="mean_f1",
         greater_is_better=True,
-        fp16=True,
-        fp16_opt_level="O1",  # Use mixed precision training with dynamic loss scaling
-        gradient_checkpointing=True,  # Enable gradient checkpointing to save memory
-        optim="adamw_torch_fused",  # Use fused AdamW optimizer
-        report_to="none"  # Disable tensorboard logging
+        fp16=False,  # Disable FP16 training
+        gradient_checkpointing=True,  # Keep gradient checkpointing for memory efficiency
+        optim="adamw_torch",  # Use standard AdamW optimizer
+        report_to="none",  # Disable tensorboard logging
+        max_grad_norm=1.0  # Add gradient clipping
     )
     
     # Initialize trainer
