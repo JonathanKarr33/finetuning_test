@@ -12,6 +12,7 @@ import torch
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import f1_score, cohen_kappa_score
 import os
+from tqdm import tqdm
 from utils import (
     get_model_config,
     create_classification_prompt,
@@ -39,50 +40,55 @@ def load_and_preprocess_data():
     
     return combined_data
 
-def prepare_training_data(data):
-    """Prepare the data for training by creating prompts and labels."""
+def prepare_training_data(data, model_type):
+    """Prepare training data with model-specific formatting."""
     training_data = []
     
-    for _, row in data.iterrows():
-        # Create the classification prompt
-        prompt = create_classification_prompt(row["comment"])
+    for _, row in tqdm(data.iterrows(), desc="Preparing training data", total=len(data)):
+        # Create the prompt
+        prompt = f"Comment: {row['comment']}\nCity: {row['city']}"
         
-        # Create binary labels for each category
-        labels = {
-            "comment_type": {
-                "direct": 1 if row["comment_type"] == "direct" else 0,
-                "reporting": 1 if row["comment_type"] == "reporting" else 0
-            },
-            "critique_categories": {
-                cat: row[f"{cat}_soft"] for cat in CRITIQUE_CATEGORIES
-            },
-            "response_categories": {
-                cat: row[f"{cat}_soft"] for cat in RESPONSE_CATEGORIES
-            },
-            "perception_types": {
-                cat: row[f"{cat}_soft"] for cat in PERCEPTION_TYPES
-            },
-            "racist": row["racist_soft"]
+        # Create the expected output format
+        expected_output = {
+            "Comment Type": row['comment_type'],
+            "Critique Category": row['critique_category'],
+            "Response Category": row['response_category'],
+            "Perception Type": row['perception_type'],
+            "Racist": "Yes" if row['racist'] > 0.5 else "No"
         }
         
+        # Convert to string format
+        expected_output_str = "\n".join([f"{k}: {v}" for k, v in expected_output.items()])
+        
+        # Format according to model type
+        formatted_prompt = format_prompt_for_model(prompt, expected_output_str, model_type)
+        
         training_data.append({
-            "prompt": prompt,
-            "labels": labels
+            "prompt": formatted_prompt,
+            "expected_output": expected_output_str
         })
     
     return training_data
 
 def create_dataset(training_data, tokenizer):
-    """Create a HuggingFace dataset from the training data."""
+    """Create a dataset for training."""
     def tokenize_function(examples):
+        # Tokenize the entire prompt including the expected output
         return tokenizer(
             examples["prompt"],
             padding="max_length",
             truncation=True,
-            max_length=512
+            max_length=512,
+            return_tensors="pt"
         )
     
-    dataset = Dataset.from_list(training_data)
+    # Convert to dataset format
+    dataset = Dataset.from_dict({
+        "prompt": [item["prompt"] for item in training_data],
+        "expected_output": [item["expected_output"] for item in training_data]
+    })
+    
+    # Tokenize
     tokenized_dataset = dataset.map(
         tokenize_function,
         batched=True,
@@ -138,6 +144,11 @@ def calculate_agreement_metrics(predictions, human_labels):
     
     return metrics
 
+def print_status(message, level=0):
+    """Print a status message with proper indentation."""
+    indent = "  " * level
+    print(f"{indent}• {message}")
+
 def evaluate_baseline_model(model, tokenizer, val_data):
     """Evaluate the baseline (zero-shot) model performance."""
     predictions = {}
@@ -150,22 +161,25 @@ def evaluate_baseline_model(model, tokenizer, val_data):
         human_labels[category] = []
     
     # Generate predictions for each validation example
-    for item in val_data:
+    print_status("Generating baseline predictions...", level=1)
+    for item in tqdm(val_data, desc="Baseline Evaluation"):
         prompt = item["prompt"]
         labels = item["labels"]
         
         # Generate prediction
         inputs = tokenizer(prompt, return_tensors="pt", padding=True, truncation=True)
+        inputs = {k: v.to(model.device) for k, v in inputs.items()}
         outputs = model.generate(
             **inputs,
             max_new_tokens=500,
             temperature=0.1,
             top_p=0.95,
-            repetition_penalty=1.1
+            repetition_penalty=1.1,
+            pad_token_id=tokenizer.eos_token_id
         )
         prediction_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
         
-        # Extract predictions from text (similar to utils.py extract_field)
+        # Extract predictions from text
         for category in COMMENT_TYPES:
             pred = 1 if category.lower() in prediction_text.lower() else 0
             predictions[category].append(pred)
@@ -210,12 +224,14 @@ def evaluate_finetuned_model(model, tokenizer, val_data):
         human_labels[category] = []
     
     # Generate predictions for each validation example
-    for item in val_data:
+    print_status("Generating finetuned predictions...", level=1)
+    for item in tqdm(val_data, desc="Finetuned Evaluation"):
         prompt = item["prompt"]
         labels = item["labels"]
         
         # Generate prediction
         inputs = tokenizer(prompt, return_tensors="pt", padding=True, truncation=True)
+        inputs = {k: v.to(model.device) for k, v in inputs.items()}  # Move inputs to GPU
         with torch.no_grad():
             outputs = model(**inputs)
             logits = outputs.logits
@@ -297,104 +313,223 @@ def save_metrics_to_file(model_type, baseline_metrics, finetuned_metrics, output
     metrics_df.to_csv(output_file, index=False)
     print(f"\nMetrics saved to {output_file}")
 
+def prepare_model_for_training(model, tokenizer, model_type):
+    """Prepare the model for instruction tuning."""
+    # Add special tokens if they don't exist
+    special_tokens = {
+        "pad_token": "<pad>",
+        "bos_token": "<s>",
+        "eos_token": "</s>",
+        "unk_token": "<unk>"
+    }
+    
+    # Add instruction tokens
+    if model_type == "llama":
+        special_tokens.update({
+            "additional_special_tokens": [
+                "### Instruction:",
+                "### Input:",
+                "### Response:",
+                "### End"
+            ]
+        })
+    elif model_type == "qwen":
+        special_tokens.update({
+            "additional_special_tokens": [
+                "<|im_start|>",
+                "<|im_end|>",
+                "<|im_start|>system",
+                "<|im_start|>user",
+                "<|im_start|>assistant"
+            ]
+        })
+    
+    # Add tokens to tokenizer
+    tokenizer.add_special_tokens(special_tokens)
+    
+    # Resize model embeddings to match new tokenizer
+    model.resize_token_embeddings(len(tokenizer))
+    
+    # Set model to training mode
+    model.train()
+    
+    return model, tokenizer
+
+def format_prompt_for_model(prompt, expected_output, model_type):
+    """Format the prompt according to the model's instruction format."""
+    if model_type == "llama":
+        return f"""### Instruction: Analyze the following comment about homelessness and provide a detailed classification.
+
+### Input:
+{prompt}
+
+### Response:
+{expected_output}
+
+### End"""
+    elif model_type == "qwen":
+        return f"""<|im_start|>system
+You are an expert in social behavior analysis. Your task is to analyze comments about homelessness and provide detailed classifications.
+<|im_end|>
+<|im_start|>user
+{prompt}
+<|im_end|>
+<|im_start|>assistant
+{expected_output}
+<|im_end|>"""
+    else:
+        raise ValueError(f"Unknown model type: {model_type}")
+
 def main():
+    print("\n=== Starting Finetuning Process ===")
+    
+    # Check GPU availability
+    print_status("Checking GPU availability...")
+    if torch.cuda.is_available():
+        print_status(f"Using GPU: {torch.cuda.get_device_name(0)}", level=1)
+        print_status(f"GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB", level=1)
+    else:
+        print_status("No GPU available, using CPU", level=1)
+    
     # Load model configuration
     model_type = "llama"  # or "qwen"
+    print_status(f"Loading {model_type.upper()} model configuration...")
     model_config = get_model_config(model_type)
     model_id = model_config["model_id"]
-    
-    print(f"\nTraining with {model_type.upper()} model ({model_id})")
+    print_status(f"Model ID: {model_id}", level=1)
     
     # Load tokenizer and model
-    tokenizer = AutoTokenizer.from_pretrained(model_id)
-    tokenizer.padding_side = "left"
-    tokenizer.pad_token = tokenizer.eos_token
-    
-    model = AutoModelForCausalLM.from_pretrained(
-        model_id,
-        device_map="auto",
-        torch_dtype=torch.float16
-    )
-    model.config.pad_token_id = model.config.eos_token_id
+    print_status("Loading tokenizer and model...")
+    try:
+        tokenizer = AutoTokenizer.from_pretrained(model_id)
+        tokenizer.padding_side = "left"
+        tokenizer.pad_token = tokenizer.eos_token
+        print_status("Tokenizer loaded successfully", level=1)
+        
+        model = AutoModelForCausalLM.from_pretrained(
+            model_id,
+            device_map="auto",
+            torch_dtype=torch.float16,
+            trust_remote_code=True  # Required for Qwen
+        )
+        model.config.pad_token_id = model.config.eos_token_id
+        print_status(f"Model loaded on device: {model.device}", level=1)
+        
+        # Prepare model for instruction tuning
+        model, tokenizer = prepare_model_for_training(model, tokenizer, model_type)
+        print_status("Model prepared for instruction tuning", level=1)
+    except Exception as e:
+        print_status(f"Error loading model: {str(e)}", level=1)
+        raise
     
     # Load and preprocess data
-    data = load_and_preprocess_data()
-    training_data = prepare_training_data(data)
+    print_status("Loading and preprocessing data...")
+    try:
+        data = load_and_preprocess_data()
+        print_status(f"Loaded {len(data)} examples", level=1)
+        
+        training_data = prepare_training_data(data, model_type)
+        print_status(f"Prepared {len(training_data)} training examples", level=1)
+    except Exception as e:
+        print_status(f"Error processing data: {str(e)}", level=1)
+        raise
     
     # Split into train and validation sets
+    print_status("Splitting data into train and validation sets...")
     train_data, val_data = train_test_split(
         training_data,
         test_size=0.2,
         random_state=42
     )
+    print_status(f"Training set: {len(train_data)} examples", level=1)
+    print_status(f"Validation set: {len(val_data)} examples", level=1)
     
     # Evaluate baseline model
-    print(f"\nEvaluating {model_type.upper()} baseline model...")
-    baseline_metrics = evaluate_baseline_model(model, tokenizer, val_data)
-    print(f"\n{model_type.upper()} Baseline metrics:")
-    for metric, value in baseline_metrics.items():
-        print(f"{metric}: {value:.4f}")
+    print_status(f"Evaluating {model_type.upper()} baseline model...")
+    try:
+        baseline_metrics = evaluate_baseline_model(model, tokenizer, val_data)
+        print_status("Baseline metrics:", level=1)
+        for metric, value in baseline_metrics.items():
+            print_status(f"{metric}: {value:.4f}", level=2)
+    except Exception as e:
+        print_status(f"Error in baseline evaluation: {str(e)}", level=1)
+        raise
     
     # Create datasets
-    train_dataset = create_dataset(train_data, tokenizer)
-    val_dataset = create_dataset(val_data, tokenizer)
+    print_status("Creating training and validation datasets...")
+    try:
+        train_dataset = create_dataset(train_data, tokenizer)
+        val_dataset = create_dataset(val_data, tokenizer)
+        print_status("Datasets created successfully", level=1)
+    except Exception as e:
+        print_status(f"Error creating datasets: {str(e)}", level=1)
+        raise
     
     # Set up training arguments
+    print_status("Setting up training configuration...")
     training_args = TrainingArguments(
-        output_dir=f"./finetuned_model_{model_type}",
+        output_dir=f"finetuned_{model_type}",
         num_train_epochs=3,
         per_device_train_batch_size=4,
         per_device_eval_batch_size=4,
         warmup_steps=500,
         weight_decay=0.01,
-        logging_dir=f"./logs_{model_type}",
+        logging_dir="./logs",
         logging_steps=10,
         evaluation_strategy="steps",
         eval_steps=100,
         save_strategy="steps",
         save_steps=100,
-        learning_rate=2e-5,
-        fp16=True,
         load_best_model_at_end=True,
-        metric_for_best_model="mean_f1"
+        metric_for_best_model="f1",
+        greater_is_better=True,
+        fp16=True,  # Enable mixed precision training
+        gradient_accumulation_steps=4,  # Accumulate gradients to simulate larger batch size
+        gradient_checkpointing=True,  # Save memory by checkpointing gradients
+        learning_rate=2e-5,
+        max_grad_norm=1.0,  # Gradient clipping
+        # Generation-specific arguments
+        generation_max_length=512,
+        generation_num_beams=4,
+        predict_with_generate=True,
+        # Instruction tuning specific
+        remove_unused_columns=False,  # Keep all columns for generation
+        label_names=["input_ids"],  # Use input_ids as labels for causal LM
     )
     
     # Initialize trainer
+    print_status("Initializing trainer...")
     trainer = Trainer(
         model=model,
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
+        tokenizer=tokenizer,
         compute_metrics=compute_metrics,
         data_collator=DataCollatorForLanguageModeling(
             tokenizer=tokenizer,
-            mlm=False
+            mlm=False  # Use causal language modeling
         )
     )
     
     # Train the model
+    print_status("Starting training...")
     trainer.train()
     
     # Save the model and tokenizer
-    trainer.save_model(f"./finetuned_model_{model_type}")
-    tokenizer.save_pretrained(f"./finetuned_model_{model_type}")
+    print_status("Saving model and tokenizer...")
+    trainer.save_model(f"finetuned_{model_type}")
+    tokenizer.save_pretrained(f"finetuned_{model_type}")
     
-    # Evaluate finetuned model
-    print(f"\nEvaluating {model_type.upper()} finetuned model...")
-    finetuned_metrics = evaluate_finetuned_model(model, tokenizer, val_data)
-    print(f"\n{model_type.upper()} Finetuned metrics:")
-    for metric, value in finetuned_metrics.items():
-        print(f"{metric}: {value:.4f}")
+    # Evaluate the model
+    print_status("Evaluating model...")
+    metrics = trainer.evaluate()
+    print_status(f"Final metrics: {metrics}", level=1)
     
-    # Print improvement summary
-    print(f"\n{model_type.upper()} Improvement summary:")
-    for metric in baseline_metrics:
-        if metric.startswith(("kappa_", "f1_")):
-            improvement = finetuned_metrics[metric] - baseline_metrics[metric]
-            print(f"{metric}: {improvement:+.4f}")
+    # Save metrics
+    save_metrics_to_file(model_type, baseline_metrics, metrics)
     
-    # Save metrics to file
-    save_metrics_to_file(model_type, baseline_metrics, finetuned_metrics)
+    print_status("Finetuning complete!")
 
 if __name__ == "__main__":
     main() 
