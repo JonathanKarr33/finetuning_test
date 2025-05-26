@@ -1,87 +1,60 @@
-# ACLSRW25
+# Comment Classification Model Finetuning
 
-This repository contains code and data for analyzing Reddit comments across multiple cities using LLMs (Llama 3.2 and Qwen 2.5) for classification and mitigation.
+This repository contains code to finetune language models (LLaMA-2 or Qwen) for classifying comments about homelessness. The model is trained to predict multiple labels for each comment, including:
 
-## Data Collection
+- Comment Type (Direct/Reporting)
+- Critique Categories (Money Aid Allocation, Government Critique, Societal Critique)
+- Response Categories (Solutions/Interventions)
+- Perception Types (Personal Interaction, Media Portrayal, Not in my Backyard, Harmful Generalization, Deserving/Undeserving)
+- Racist Flag
 
-### 1. Reddit Data Collection
-Run the following script to collect Reddit data:
+## Setup
+
+1. Install the required dependencies:
 ```bash
-python scripts/get_reddit_data.py
+pip install -r requirements.txt
 ```
 
-**Note:** You'll need to:
-- Replace `CLIENT_ID`, `CLIENT_SECRET`, and `USER_AGENT` with your Reddit API credentials
-- Specify your target subreddit name
-- The script outputs 3 CSVs in `data/<city>/reddit/`:
-  - `all_comments.csv` (not included due to identifiable information)
-  - `filtered_comments.csv` (not included due to identifiable information)
-  - `statistics.csv` (included)
+2. Make sure you have access to the model weights:
+- For LLaMA-2: You need to request access from Meta
+- For Qwen: You need to request access from Alibaba
 
-After data collection, run:
+3. Place your data files in the correct locations:
+- `annotation/raw_scores.csv`: Raw annotation scores from two annotators
+- `Output/annotation/soft_labels.csv`: Averaged soft labels from the annotations
+
+## Usage
+
+1. Run the finetuning script:
 ```bash
-python scripts/random_reddit_sample.py
-```
-This generates a random set of 50 Reddit comments per city.
-
-### 2. Deidentified Data
-The deidentified dataset (500 comments total, 50 from each of 10 cities) is available at:
-[`output/sampled_reddit_comments_by_city_deidentified.csv`](output/sampled_reddit_comments_by_city_deidentified.csv)
-
-To generate this yourself:
-```bash
-python scripts/deidentify_comments.py
+python finetune.py
 ```
 
-## Model Setup
+The script will:
+- Load and preprocess the data
+- Split it into training and validation sets
+- Finetune the model
+- Save the finetuned model to `./finetuned_model`
+- Print validation results
 
-### 3. Download Required Models
-Download the following models from HuggingFace:
-- [Llama 3.2 3B Instruct](https://huggingface.co/meta-llama/Llama-3.2-3B-Instruct)
-- [Qwen 2.5 7B Instruct](https://huggingface.co/Qwen/Qwen2.5-7B-Instruct)
+2. To use the finetuned model for predictions:
+```python
+from finetune import predict_comment
 
-## Annotation and Classification
-
-### 4. Gold Standard / Soft Labeling
-The annotation data is available in:
-- Raw scores: [`annotation/raw_scores.csv`](annotation/raw_scores.csv)
-- Processed outputs:
-  - [`output/annotation/column_agreement_stats.csv`](output/annotation/column_agreement_stats.csv)
-  - [`output/annotation/soft_labels.csv`](output/annotation/soft_labels.csv)
-
-To generate these yourself:
-```bash
-python scripts/annotator_agreement.py
+comment = "Your comment here"
+predictions = predict_comment(comment)
 ```
 
-### 5. Classification
-The classified comments are available in:
-- [`output/classified_comments_llama.csv`](output/classified_comments_llama.csv)
-- [`output/classified_comments_qwen.csv`](output/classified_comments_qwen.csv)
+## Model Architecture
 
-To run the classification yourself:
-```bash
-python scripts/llama_3_2_classify.py
-python scripts/qwen_3_2_classify.py
-```
+The script uses a multi-label classification approach where each comment can have multiple labels. The model outputs probabilities for each label, which are then thresholded to get binary predictions.
 
-### 6. Mitigation
-The mitigated comments are available in:
-- [`output/mitigated_comments_llama.csv`](output/mitigated_comments_llama.csv)
-- [`output/mitigated_comments_qwen.csv`](output/mitigated_comments_qwen.csv)
+## Evaluation
 
-To run the mitigation yourself:
-```bash
-python scripts/llama_3_2_mitigate.py
-python scripts/qwen_3_2_mitigate.py
-```
+The model is evaluated using F1 score for each label category. The final score is the mean F1 score across all categories.
 
-## Analysis
+## Notes
 
-### 7. Statistics and Visualization
-All statistics and charts are available in the [`output/charts/`](output/charts/) directory.
-
-To generate these yourself:
-```bash
-python scripts/calculate_intercoder_reliability.py
-```
+- The script is currently configured for LLaMA-2 by default. To use Qwen, change the `model_name` variable in `finetune.py`.
+- You may need to adjust the batch size and learning rate based on your available GPU memory.
+- The model uses a maximum sequence length of 512 tokens. Adjust this if needed for your use case.
