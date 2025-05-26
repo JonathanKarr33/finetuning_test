@@ -5,7 +5,8 @@ from transformers import (
     AutoModelForCausalLM,
     TrainingArguments,
     Trainer,
-    DataCollatorForLanguageModeling
+    DataCollatorForLanguageModeling,
+    GenerationConfig
 )
 from datasets import Dataset
 import torch
@@ -511,34 +512,32 @@ def main():
     
     # Set up training arguments
     print_status("Setting up training configuration...")
+    output_dir = f"finetuned_{model_type}"
     training_args = TrainingArguments(
-        output_dir=f"finetuned_{model_type}",
+        output_dir=output_dir,
         num_train_epochs=3,
         per_device_train_batch_size=4,
         per_device_eval_batch_size=4,
-        warmup_steps=500,
+        gradient_accumulation_steps=4,
+        learning_rate=2e-5,
         weight_decay=0.01,
-        logging_dir="./logs",
+        warmup_ratio=0.1,
+        logging_dir=os.path.join(output_dir, "logs"),
         logging_steps=10,
         evaluation_strategy="steps",
         eval_steps=100,
         save_strategy="steps",
         save_steps=100,
         load_best_model_at_end=True,
-        metric_for_best_model="f1",
+        metric_for_best_model="mean_f1",
         greater_is_better=True,
-        fp16=True,  # Enable mixed precision training
-        gradient_accumulation_steps=4,  # Accumulate gradients to simulate larger batch size
-        gradient_checkpointing=True,  # Save memory by checkpointing gradients
-        learning_rate=2e-5,
-        max_grad_norm=1.0,  # Gradient clipping
-        # Generation-specific arguments
-        generation_max_length=512,
-        generation_num_beams=4,
-        predict_with_generate=True,
-        # Instruction tuning specific
-        remove_unused_columns=False,  # Keep all columns for generation
-        label_names=["input_ids"],  # Use input_ids as labels for causal LM
+        fp16=True,
+        report_to="tensorboard",
+        generation_config=GenerationConfig(
+            max_length=512,
+            num_beams=4,
+            early_stopping=True
+        )
     )
     
     # Initialize trainer
