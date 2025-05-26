@@ -75,11 +75,11 @@ def prepare_training_data(data, model_type):
         
         # Create the expected output format
         expected_output = {
-            "Comment Type": row['comment_type'],
-            "Critique Category": row['critique_category'],
-            "Response Category": row['response_category'],
-            "Perception Type": row['perception_type'],
-            "Racist": "Yes" if row['racist'] > 0.5 else "No"
+            "Comment Type": "direct" if row['Direct'] > row['Reporting'] else "reporting",
+            "Critique Category": ", ".join([cat for cat in CRITIQUE_CATEGORIES if row[cat] > 0]),
+            "Response Category": ", ".join([cat for cat in RESPONSE_CATEGORIES if row[cat] > 0]),
+            "Perception Type": ", ".join([cat for cat in PERCEPTION_TYPES if row[cat] > 0]),
+            "Racist": "Yes" if row['Racist'] > 0.5 else "No"
         }
         
         # Convert to string format
@@ -95,19 +95,13 @@ def prepare_training_data(data, model_type):
                 "reporting": 1 if row['Reporting'] > row['Direct'] else 0
             },
             "critique_categories": {
-                "money aid allocation": row['money aid allocation'],
-                "government critique": row['government critique'],
-                "societal critique": row['societal critique']
+                cat: row[cat] for cat in CRITIQUE_CATEGORIES
             },
             "response_categories": {
-                "solutions/interventions": row['solutions/interventions'],
-                "personal interaction": row['personal interaction'],
-                "media portrayal": row['media portrayal']
+                cat: row[cat] for cat in RESPONSE_CATEGORIES
             },
             "perception_types": {
-                "not in my backyard": row['not in my backyard'],
-                "harmful generalization": row['harmful generalization'],
-                "deserving/undeserving": row['deserving/undeserving']
+                cat: row[cat] for cat in PERCEPTION_TYPES
             },
             "racist": row['Racist']
         }
