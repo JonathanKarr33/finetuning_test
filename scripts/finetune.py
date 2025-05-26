@@ -91,8 +91,8 @@ def prepare_training_data(data, model_type):
         # Create labels dictionary for evaluation
         labels = {
             "comment_type": {
-                "direct": 1 if row['comment_type'] == 'direct' else 0,
-                "reporting": 1 if row['comment_type'] == 'reporting' else 0
+                "direct": 1 if row['Direct'] > row['Reporting'] else 0,
+                "reporting": 1 if row['Reporting'] > row['Direct'] else 0
             },
             "critique_categories": {
                 "money aid allocation": row['money aid allocation'],
