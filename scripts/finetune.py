@@ -119,31 +119,31 @@ def create_dataset(training_data, tokenizer):
     """Create a dataset for training."""
     def tokenize_function(examples):
         # Tokenize the entire prompt including the expected output
-        return tokenizer(
-            examples["prompt"],
+        full_text = [p + e for p, e in zip(examples["prompt"], examples["expected_output"])]
+        tokenized = tokenizer(
+            full_text,
             padding="max_length",
             truncation=True,
             max_length=512,
             return_tensors="pt"
         )
+        
+        # Create labels (same as input_ids for causal LM)
+        tokenized["labels"] = tokenized["input_ids"].clone()
+        
+        return tokenized
     
     # Convert to dataset format
     dataset = Dataset.from_dict({
         "prompt": [item["prompt"] for item in training_data],
-        "expected_output": [item["expected_output"] for item in training_data],
-        "input_ids": [tokenizer(item["prompt"] + item["expected_output"], 
-                              padding="max_length",
-                              truncation=True,
-                              max_length=512,
-                              return_tensors="pt")["input_ids"][0] 
-                     for item in training_data]
+        "expected_output": [item["expected_output"] for item in training_data]
     })
     
     # Tokenize
     tokenized_dataset = dataset.map(
         tokenize_function,
         batched=True,
-        remove_columns=["prompt", "expected_output"]
+        remove_columns=dataset.column_names
     )
     
     return tokenized_dataset
@@ -532,9 +532,9 @@ def main():
     training_args = TrainingArguments(
         output_dir=output_dir,
         num_train_epochs=3,
-        per_device_train_batch_size=4,
-        per_device_eval_batch_size=4,
-        gradient_accumulation_steps=4,
+        per_device_train_batch_size=2,  # Reduced batch size
+        per_device_eval_batch_size=2,   # Reduced batch size
+        gradient_accumulation_steps=8,   # Increased gradient accumulation
         learning_rate=2e-5,
         weight_decay=0.01,
         warmup_ratio=0.1,
@@ -553,10 +553,12 @@ def main():
         report_to="none",
         max_grad_norm=1.0,
         remove_unused_columns=False,
-        label_names=["input_ids"],
+        label_names=["labels"],
         predict_with_generate=True,
         generation_max_length=512,
-        generation_num_beams=4
+        generation_num_beams=4,
+        dataloader_num_workers=0,  # Disable multiprocessing
+        dataloader_pin_memory=False  # Disable pinned memory
     )
     
     # Initialize trainer
