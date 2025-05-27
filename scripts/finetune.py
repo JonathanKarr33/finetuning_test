@@ -555,8 +555,6 @@ def main():
         remove_unused_columns=False,
         label_names=["labels"],
         predict_with_generate=True,
-        generation_max_length=512,
-        generation_num_beams=4,
         dataloader_num_workers=0,  # Disable multiprocessing
         dataloader_pin_memory=False  # Disable pinned memory
     )
