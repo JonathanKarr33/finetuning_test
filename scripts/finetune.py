@@ -130,14 +130,20 @@ def create_dataset(training_data, tokenizer):
     # Convert to dataset format
     dataset = Dataset.from_dict({
         "prompt": [item["prompt"] for item in training_data],
-        "expected_output": [item["expected_output"] for item in training_data]
+        "expected_output": [item["expected_output"] for item in training_data],
+        "input_ids": [tokenizer(item["prompt"] + item["expected_output"], 
+                              padding="max_length",
+                              truncation=True,
+                              max_length=512,
+                              return_tensors="pt")["input_ids"][0] 
+                     for item in training_data]
     })
     
     # Tokenize
     tokenized_dataset = dataset.map(
         tokenize_function,
         batched=True,
-        remove_columns=dataset.column_names
+        remove_columns=["prompt", "expected_output"]
     )
     
     return tokenized_dataset
@@ -276,41 +282,43 @@ def evaluate_finetuned_model(model, tokenizer, val_data):
         
         # Generate prediction
         inputs = tokenizer(prompt, return_tensors="pt", padding=True, truncation=True)
-        inputs = {k: v.to(model.device) for k, v in inputs.items()}  # Move inputs to GPU
+        inputs = {k: v.to(model.device) for k, v in inputs.items()}
+        
+        # Process in smaller chunks to save memory
         with torch.no_grad():
             outputs = model(**inputs)
-            logits = outputs.logits
-        
-        # Convert logits to probabilities
-        probs = torch.sigmoid(logits)
+            logits = outputs.logits.detach().cpu()  # Move to CPU immediately
         
         # Extract predictions for each category
         for category in COMMENT_TYPES:
-            pred = probs[0, COMMENT_TYPES.index(category)].item()
+            pred = torch.sigmoid(logits[0, COMMENT_TYPES.index(category)]).item()
             predictions[category].append(pred)
             human_labels[category].append(labels["comment_type"][category])
         
         for category in CRITIQUE_CATEGORIES:
-            pred = probs[0, len(COMMENT_TYPES) + CRITIQUE_CATEGORIES.index(category)].item()
+            pred = torch.sigmoid(logits[0, len(COMMENT_TYPES) + CRITIQUE_CATEGORIES.index(category)]).item()
             predictions[category].append(pred)
             human_labels[category].append(labels["critique_categories"][category])
         
         for category in RESPONSE_CATEGORIES:
-            pred = probs[0, len(COMMENT_TYPES) + len(CRITIQUE_CATEGORIES) + 
-                        RESPONSE_CATEGORIES.index(category)].item()
+            pred = torch.sigmoid(logits[0, len(COMMENT_TYPES) + len(CRITIQUE_CATEGORIES) + 
+                        RESPONSE_CATEGORIES.index(category)]).item()
             predictions[category].append(pred)
             human_labels[category].append(labels["response_categories"][category])
         
         for category in PERCEPTION_TYPES:
-            pred = probs[0, len(COMMENT_TYPES) + len(CRITIQUE_CATEGORIES) + 
-                        len(RESPONSE_CATEGORIES) + PERCEPTION_TYPES.index(category)].item()
+            pred = torch.sigmoid(logits[0, len(COMMENT_TYPES) + len(CRITIQUE_CATEGORIES) + 
+                        len(RESPONSE_CATEGORIES) + PERCEPTION_TYPES.index(category)]).item()
             predictions[category].append(pred)
             human_labels[category].append(labels["perception_types"][category])
         
         # Handle racist flag
-        racist_pred = probs[0, -1].item()
+        racist_pred = torch.sigmoid(logits[0, -1]).item()
         predictions["racist"].append(racist_pred)
         human_labels["racist"].append(labels["racist"])
+        
+        # Clear CUDA cache after each example
+        torch.cuda.empty_cache()
     
     # Convert to numpy arrays
     for category in predictions:
@@ -539,11 +547,16 @@ def main():
         load_best_model_at_end=True,
         metric_for_best_model="mean_f1",
         greater_is_better=True,
-        fp16=False,  # Disable FP16 training
-        gradient_checkpointing=True,  # Keep gradient checkpointing for memory efficiency
-        optim="adamw_torch",  # Use standard AdamW optimizer
-        report_to="none",  # Disable tensorboard logging
-        max_grad_norm=1.0  # Add gradient clipping
+        fp16=False,
+        gradient_checkpointing=True,
+        optim="adamw_torch",
+        report_to="none",
+        max_grad_norm=1.0,
+        remove_unused_columns=False,
+        label_names=["input_ids"],
+        predict_with_generate=True,
+        generation_max_length=512,
+        generation_num_beams=4
     )
     
     # Initialize trainer
@@ -570,9 +583,9 @@ def main():
     trainer.save_model(f"finetuned_{model_type}")
     tokenizer.save_pretrained(f"finetuned_{model_type}")
     
-    # Evaluate the model
+    # Evaluate the model using our custom evaluation function
     print_status("Evaluating model...")
-    metrics = trainer.evaluate()
+    metrics = evaluate_finetuned_model(model, tokenizer, val_data)
     print_status(f"Final metrics: {metrics}", level=1)
     
     # Save metrics
