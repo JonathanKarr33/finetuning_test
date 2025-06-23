@@ -22,6 +22,7 @@ from utils import (
     RESPONSE_CATEGORIES,
     PERCEPTION_TYPES
 )
+from typing import Any
 
 def load_and_preprocess_data():
     """Load and preprocess the raw scores and soft labels."""
@@ -369,7 +370,7 @@ def save_metrics_to_file(model_type, baseline_metrics, finetuned_metrics, output
 def prepare_model_for_training(model, tokenizer, model_type):
     """Prepare the model for instruction tuning."""
     # Add special tokens if they don't exist
-    special_tokens = {
+    special_tokens: dict[str, Any] = {
         "pad_token": "<pad>",
         "bos_token": "<s>",
         "eos_token": "</s>",
@@ -378,24 +379,20 @@ def prepare_model_for_training(model, tokenizer, model_type):
     
     # Add instruction tokens
     if model_type == "llama":
-        special_tokens.update({
-            "additional_special_tokens": [
-                "### Instruction:",
-                "### Input:",
-                "### Response:",
-                "### End"
-            ]
-        })
+        special_tokens["additional_special_tokens"] = [
+            "### Instruction:",
+            "### Input:",
+            "### Response:",
+            "### End"
+        ]
     elif model_type == "qwen":
-        special_tokens.update({
-            "additional_special_tokens": [
-                "<|im_start|>",
-                "<|im_end|>",
-                "<|im_start|>system",
-                "<|im_start|>user",
-                "<|im_start|>assistant"
-            ]
-        })
+        special_tokens["additional_special_tokens"] = [
+            "<|im_start|>",
+            "<|im_end|>",
+            "<|im_start|>system",
+            "<|im_start|>user",
+            "<|im_start|>assistant"
+        ]
     
     # Add tokens to tokenizer
     tokenizer.add_special_tokens(special_tokens)
@@ -554,7 +551,6 @@ def main():
         max_grad_norm=1.0,
         remove_unused_columns=False,
         label_names=["labels"],
-        predict_with_generate=True,
         dataloader_num_workers=0,  # Disable multiprocessing
         dataloader_pin_memory=False  # Disable pinned memory
     )

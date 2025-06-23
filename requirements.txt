@@ -6,3 +6,6 @@ datasets>=2.12.0
 torch>=2.0.0
 evaluate>=0.4.0 
 tensorboard
+spacy
+pydeidentify
+accelerate>=0.26.0
