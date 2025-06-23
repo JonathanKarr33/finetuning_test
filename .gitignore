@@ -1,0 +1,4 @@
+venv/*
+finetuned_llama/*
+scripts/__pycache__/*
+scripts/.ipynb_checkpoints/*
