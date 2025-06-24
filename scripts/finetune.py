@@ -150,26 +150,10 @@ def create_dataset(training_data, tokenizer):
     return tokenized_dataset
 
 def compute_metrics(eval_pred):
-    """Compute F1 score for each category."""
-    predictions, labels = eval_pred
-    
-    # Convert predictions to binary using 0.5 threshold
-    binary_preds = (predictions > 0.5).astype(int)
-    
-    # Calculate F1 score for each category
-    f1_scores = {}
-    for i, category in enumerate(COMMENT_TYPES + CRITIQUE_CATEGORIES + 
-                               RESPONSE_CATEGORIES + PERCEPTION_TYPES + ["racist"]):
-        f1_scores[f"f1_{category}"] = f1_score(
-            labels[:, i],
-            binary_preds[:, i],
-            average="binary"
-        )
-    
-    # Calculate mean F1 score
-    f1_scores["mean_f1"] = np.mean(list(f1_scores.values()))
-    
-    return f1_scores
+    """Compute metrics for causal language model training."""
+    # For causal language models, the trainer automatically computes loss
+    # We don't need custom metrics computation
+    return {}
 
 def calculate_agreement_metrics(predictions, human_labels):
     """Calculate agreement metrics between predictions and human labels."""
@@ -285,36 +269,41 @@ def evaluate_finetuned_model(model, tokenizer, val_data):
         inputs = tokenizer(prompt, return_tensors="pt", padding=True, truncation=True)
         inputs = {k: v.to(model.device) for k, v in inputs.items()}
         
-        # Process in smaller chunks to save memory
         with torch.no_grad():
-            outputs = model(**inputs)
-            logits = outputs.logits.detach().cpu()  # Move to CPU immediately
+            outputs = model.generate(
+                **inputs,
+                max_new_tokens=500,
+                temperature=0.1,
+                top_p=0.95,
+                repetition_penalty=1.1,
+                pad_token_id=tokenizer.eos_token_id,
+                do_sample=True
+            )
+            prediction_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
         
-        # Extract predictions for each category
+        # Extract predictions from text (same logic as baseline)
         for category in COMMENT_TYPES:
-            pred = torch.sigmoid(logits[0, COMMENT_TYPES.index(category)]).item()
+            pred = 1 if category.lower() in prediction_text.lower() else 0
             predictions[category].append(pred)
             human_labels[category].append(labels["comment_type"][category])
         
         for category in CRITIQUE_CATEGORIES:
-            pred = torch.sigmoid(logits[0, len(COMMENT_TYPES) + CRITIQUE_CATEGORIES.index(category)]).item()
+            pred = 1 if category.lower() in prediction_text.lower() else 0
             predictions[category].append(pred)
             human_labels[category].append(labels["critique_categories"][category])
         
         for category in RESPONSE_CATEGORIES:
-            pred = torch.sigmoid(logits[0, len(COMMENT_TYPES) + len(CRITIQUE_CATEGORIES) + 
-                        RESPONSE_CATEGORIES.index(category)]).item()
+            pred = 1 if category.lower() in prediction_text.lower() else 0
             predictions[category].append(pred)
             human_labels[category].append(labels["response_categories"][category])
         
         for category in PERCEPTION_TYPES:
-            pred = torch.sigmoid(logits[0, len(COMMENT_TYPES) + len(CRITIQUE_CATEGORIES) + 
-                        len(RESPONSE_CATEGORIES) + PERCEPTION_TYPES.index(category)]).item()
+            pred = 1 if category.lower() in prediction_text.lower() else 0
             predictions[category].append(pred)
             human_labels[category].append(labels["perception_types"][category])
         
         # Handle racist flag
-        racist_pred = torch.sigmoid(logits[0, -1]).item()
+        racist_pred = 1 if "racist: yes" in prediction_text.lower() else 0
         predictions["racist"].append(racist_pred)
         human_labels["racist"].append(labels["racist"])
         
@@ -542,8 +531,8 @@ def main():
         save_strategy="steps",
         save_steps=100,
         load_best_model_at_end=True,
-        metric_for_best_model="mean_f1",
-        greater_is_better=True,
+        metric_for_best_model="eval_loss",
+        greater_is_better=False,  # Lower loss is better
         fp16=False,
         gradient_checkpointing=True,
         optim="adamw_torch",
@@ -563,7 +552,6 @@ def main():
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
         tokenizer=tokenizer,
-        compute_metrics=compute_metrics,
         data_collator=DataCollatorForLanguageModeling(
             tokenizer=tokenizer,
             mlm=False  # Use causal language modeling
