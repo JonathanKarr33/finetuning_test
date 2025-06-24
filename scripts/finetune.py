@@ -515,12 +515,39 @@ def main():
         early_stopping=True
     )
     
+    # Optimize batch sizes based on GPU memory
+    if torch.cuda.is_available():
+        gpu_memory_gb = torch.cuda.get_device_properties(0).total_memory / 1e9
+        print_status(f"GPU Memory: {gpu_memory_gb:.1f} GB", level=1)
+        
+        if gpu_memory_gb >= 20:  # High-end GPU (RTX 6000, A100, etc.)
+            train_batch_size = 8
+            eval_batch_size = 8
+            gradient_accumulation_steps = 2
+            print_status("Using optimized settings for high-end GPU", level=1)
+        elif gpu_memory_gb >= 12:  # Mid-range GPU (RTX 3080, etc.)
+            train_batch_size = 4
+            eval_batch_size = 4
+            gradient_accumulation_steps = 4
+            print_status("Using optimized settings for mid-range GPU", level=1)
+        else:  # Lower-end GPU
+            train_batch_size = 2
+            eval_batch_size = 2
+            gradient_accumulation_steps = 8
+            print_status("Using conservative settings for lower-end GPU", level=1)
+    else:
+        # CPU fallback
+        train_batch_size = 1
+        eval_batch_size = 1
+        gradient_accumulation_steps = 16
+        print_status("Using CPU settings", level=1)
+    
     training_args = TrainingArguments(
         output_dir=output_dir,
         num_train_epochs=3,
-        per_device_train_batch_size=2,  # Reduced batch size
-        per_device_eval_batch_size=2,   # Reduced batch size
-        gradient_accumulation_steps=8,   # Increased gradient accumulation
+        per_device_train_batch_size=train_batch_size,
+        per_device_eval_batch_size=eval_batch_size,
+        gradient_accumulation_steps=gradient_accumulation_steps,
         learning_rate=2e-5,
         weight_decay=0.01,
         warmup_ratio=0.1,
